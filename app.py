@@ -146,16 +146,6 @@ L = {
     },
 }
 
-REASONS = {
-    "sps_high": "\uc810\ud3ec\ub2f9 \ub9e4\ucd9c\uc774 \ub192\uc544 \uae30\uc874 \uc810\ud3ec\uc758 \ub9e4\ucd9c \ud6a8\uc728\uc774 \uc88b\uc740 \uc9c0\uc5ed\uc785\ub2c8\ub2e4.",
-    "pop_high": "\uc720\ub3d9\uc778\uad6c \uaddc\ubaa8\uac00 \ucee4 \uc7a0\uc7ac \uace0\uac1d \uc218\uc694\uac00 \ud48d\ubd80\ud55c \uc9c0\uc5ed\uc785\ub2c8\ub2e4.",
-    "spop_high": "\uc720\ub3d9\uc778\uad6c \ub300\ube44 \ub9e4\ucd9c\uc774 \ub192\uc544 \uc2e4\uc81c \uc18c\ube44 \uc804\ud658\ub825\uc774 \uc88b\uc740 \uc0c1\uad8c\uc73c\ub85c \ubcfc \uc218 \uc788\uc2b5\ub2c8\ub2e4.",
-    "close_low": "\ud3d0\uc5c5\ub960\uc774 \ub0ae\uc544 \uc0c1\ub300\uc801\uc73c\ub85c \uc548\uc815\uc801\uc778 \uc0c1\uad8c\uc73c\ub85c \ud574\uc11d\ub429\ub2c8\ub2e4.",
-    "close_high": "\ud3d0\uc5c5\ub960\uc774 \ub192\uc544 \ucc3d\uc5c5 \uc804 \uacbd\uc7c1 \uac15\ub3c4\uc640 \uc785\uc9c0 \uc870\uac74\uc744 \ucd94\uac00 \uac80\ud1a0\ud560 \ud544\uc694\uac00 \uc788\uc2b5\ub2c8\ub2e4.",
-    "neutral_strength": "\ud575\uc2ec \uc9c0\ud45c\uac00 \ud3c9\uade0 \uc218\uc900\uc774\ubbc0\ub85c \uc5c5\uc885/\uc785\uc9c0\uc758 \uc815\uc131 \uac80\ud1a0\uac00 \ud544\uc694\ud569\ub2c8\ub2e4.",
-    "neutral_caution": "\ud2b9\ubcc4\ud55c \uc704\ud5d8 \uc2e0\ud638\ub294 \ud06c\uc9c0 \uc54a\uc9c0\ub9cc \uc5c5\uc885 \ud2b9\uc131\ubcc4 \uc810\uac80\uc740 \ud544\uc694\ud569\ub2c8\ub2e4.",
-}
-
 DETAIL_REASONS = {
     "sps_above": "\uc810\ud3ec\ub2f9 \ub9e4\ucd9c\uc774 \ud3c9\uade0\ubcf4\ub2e4 \ub192\uc544 \ub9e4\ucd9c \ud6a8\uc728\uc774 \uc88b\uc740 \ud3b8\uc785\ub2c8\ub2e4.",
     "sps_below": "\uc810\ud3ec\ub2f9 \ub9e4\ucd9c\uc774 \ud3c9\uade0\ubcf4\ub2e4 \ub0ae\uc544 \ub9e4\ucd9c \ud6a8\uc728 \ucc28\uc6d0\uc758 \ub300\uc548\uc774 \ud544\uc694\ud569\ub2c8\ub2e4.",
@@ -443,27 +433,6 @@ def build_master_dataframe(
     return merged
 
 
-def split_strengths_and_cautions(row: pd.Series) -> tuple[list[str], list[str]]:
-    strengths: list[str] = []
-    cautions: list[str] = []
-
-    if row["score_sales_per_store"] >= 70:
-        strengths.append(REASONS["sps_high"])
-    if row["score_floating_pop"] >= 70:
-        strengths.append(REASONS["pop_high"])
-    if row["score_sales_per_floating_pop"] >= 70:
-        strengths.append(REASONS["spop_high"])
-    if row["score_close_stability"] >= 70:
-        strengths.append(REASONS["close_low"])
-    if row["score_close_stability"] < 40:
-        cautions.append(REASONS["close_high"])
-    if not strengths:
-        strengths.append(REASONS["neutral_strength"])
-    if not cautions:
-        cautions.append(REASONS["neutral_caution"])
-    return strengths, cautions
-
-
 def prepare_display_columns(agg: pd.DataFrame) -> pd.DataFrame:
     disp = agg.copy()
     disp["disp_total_sales"] = disp["total_sales"].apply(format_currency_krw)
@@ -683,12 +652,16 @@ def render_top_charts(
 
 
 def render_recommendation_section(
-    agg_disp: pd.DataFrame, top_n: int, overall_avg: dict
+    agg_disp: pd.DataFrame, top_n: int, overall_avg: dict, total_stores_avg: float
 ) -> pd.DataFrame:
     st.subheader(L["section_reco"])
     reco = agg_disp.sort_values("startup_score", ascending=False).head(top_n).copy()
-    reco["strengths"] = reco.apply(lambda r: split_strengths_and_cautions(r)[0], axis=1)
-    reco["cautions"] = reco.apply(lambda r: split_strengths_and_cautions(r)[1], axis=1)
+    reco["strengths"] = reco.apply(
+        lambda r: build_detail_strengths_cautions(r, overall_avg, total_stores_avg)[0], axis=1
+    )
+    reco["cautions"] = reco.apply(
+        lambda r: build_detail_strengths_cautions(r, overall_avg, total_stores_avg)[1], axis=1
+    )
     reco["reason"] = reco["strengths"].apply(lambda xs: " ".join(xs))
 
     cols_map = L["reco_table_cols"]
@@ -754,7 +727,7 @@ def render_recommendation_section(
     top5 = reco.head(5)
     cols = st.columns(5)
     for idx, row in top5.reset_index(drop=True).iterrows():
-        strengths, cautions = split_strengths_and_cautions(row)
+        strengths, cautions = build_detail_strengths_cautions(row, overall_avg, total_stores_avg)
         with cols[idx]:
             st.markdown(f"#### {idx + 1}. {row['dong_name']}")
             st.markdown(f"- {L['card_score']}: **{format_score(row['startup_score'])}**")
@@ -1115,11 +1088,12 @@ def render_dashboard(df: pd.DataFrame) -> None:
             "avg_close_rate": agg["avg_close_rate"].mean(skipna=True),
             "startup_score": agg["startup_score"].mean(skipna=True),
         }
+        total_stores_avg = agg["total_stores"].mean(skipna=True)
 
     st.subheader(L["section_charts"])
     render_top_charts(agg_disp, top_n, scatter_color_metric)
 
-    reco_df = render_recommendation_section(agg_disp, top_n, overall_avg)
+    reco_df = render_recommendation_section(agg_disp, top_n, overall_avg, total_stores_avg)
 
     selected_dong = render_candidate_detail(agg, reco_df, overall_avg)
 
