@@ -3,6 +3,7 @@
 ## Streamlit deploy 주소
 
 - https://publicdata-businessdistrict-2413640.streamlit.app/
+- 초기 실행 시 데이터 불러오는 시간으로 인해 로딩이 길 수 있습니다.
 
 ## 사용한 프롬프트 공유 링크
 
